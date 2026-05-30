@@ -505,8 +505,9 @@ void virtio_gpu_init(void)
     // gpu_cmd_attach() will also record them in attach_buf.entries[] so they
     // can be reused to restore the backing after a flip.
     static struct virtio_gpu_mem_entry fb_entries[FB_PAGES];
-    for (int i = 0; i < FB_PAGES; i++) {
-        fb_entries[i].addr   = (uint64)fb[i];
+    for (int i = 0; i < FB_PAGES; i++)
+    {
+        fb_entries[i].addr = (uint64)fb[i];
         fb_entries[i].length = PGSIZE;
     }
     gpu_cmd_attach(fb_entries, FB_PAGES);
@@ -577,4 +578,114 @@ void display_daemon(void)
         virtio_gpu_commit();
         acquire(&tickslock);
     }
+}
+
+// Helper to check if a virtual address range is in collision
+// Returns 0 if free, 1 if a collision is found.
+int check_collsion(pagetable_t pagetable, uint64 start_va, uint64 size, uint64 *collision_va)
+{
+    for (uint64 va = start_va; va < start_va + size; va += PGSIZE)
+    {
+        pte_t *pte = walk(pagetable, va, 0);
+        if (pte != 0 && (*pte & PTE_V))
+        {
+            if (collision_va != 0)
+            {
+                *collision_va = va;
+            }
+            return 1; // Collision detected
+        }
+    }
+    return 0; // Region is free
+}
+
+int map_display(uint64 addr)
+{
+
+    struct proc *p = myproc();
+    // avoid remapping the same process
+    if (p->display_va != 0)
+        return -1;
+
+    uint64 fb_size = (uint64)FB_PAGES * PGSIZE;
+
+    //select adress
+    if (addr == 0)
+    {
+        //searching from the highest page
+        uint64 search_addr = PGROUNDDOWN(TRAPFRAME - fb_size);
+        int found = 0;
+
+        // don't go below the process's current memory (p->sz)
+        while (search_addr >= PGROUNDUP(p->sz))
+        {
+            uint64 collision_va;
+
+            // check if the current search_addr block is free
+            if (check_collsion(p->pagetable, search_addr, fb_size, &collision_va))
+            {
+                // COLLISION FOUND!
+                // jump our search below this collision.
+                search_addr = PGROUNDDOWN(collision_va - fb_size);
+            }
+            else
+            {
+                //free!
+                addr = search_addr;
+                found = 1;
+                break;
+            }
+        }
+
+        if (!found)
+        {
+            return -1; // not found free area in the virtual address space
+        }
+    }
+    else
+    {
+        //verify if addr is page-aligned
+        if (addr != PGROUNDDOWN(addr))
+            return -1;
+
+        // mapping starts above the rounded-up process size
+        if (addr < PGROUNDUP(p->sz))
+            return -1;
+
+        // the entire range fits below MAXVA
+        if (addr + fb_size > MAXVA)
+            return -1;
+
+        // 4. Collision check for user-provided address
+        if (check_collsion(p->pagetable, addr, fb_size, 0))
+        {
+            return -1; // collision detected
+        }
+    }
+
+    // map each page in loop
+    for (int i = 0; i < FB_PAGES; i++)
+    {
+        uint64 pa = (uint64)fb[i];
+        uint64 va = addr + (i * PGSIZE);
+
+        // Map with User, Read, and Write permissions
+        if (mappages(p->pagetable, va, PGSIZE, pa, PTE_U | PTE_R | PTE_W) != 0)
+        {
+            // unmap what we mapped
+            if (i > 0)
+            {
+                uvmunmap(p->pagetable, addr, i, 0); // do_free = 0 is mandatory!
+            }
+            return -1;
+        }
+    }
+
+    // set the virtual address to the process state and return it
+    p->display_va = addr;
+    return addr;
+}
+
+void virtio_gpu_flip(void* buf){
+
 }

@@ -124,6 +124,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->display_va = 0; //mark display unused
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -158,6 +159,14 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+
+  // TDOWN THE FRAMEBUFFER MAPPING SAFELY BEFORE FREEING THE PAGETABLE
+  if(p->display_va != 0){
+    // Unmap the framebuffer pages without freeing the underlying physical memory (do_free = 0)
+    uvmunmap(p->pagetable, p->display_va, GPU_FB_PAGES, 0);
+    p->display_va = 0;
+  }
+
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
