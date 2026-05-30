@@ -7,6 +7,7 @@
 #include "proc.h"
 
 extern int map_display(uint64);
+extern int virtio_gpu_flip(uint64);
 
 uint64
 sys_exit(void)
@@ -103,7 +104,12 @@ sys_uptime(void)
 uint64
 sys_flip_display(void)
 {
-  return -1;
+  uint64 address;
+
+  argaddr(0, &address);
+  
+  return virtio_gpu_flip(address);
+
 }
 
 // sys_map_display: map the GPU's kernel framebuffer pages (fb[]) directly

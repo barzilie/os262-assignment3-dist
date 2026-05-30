@@ -599,7 +599,7 @@ int check_collsion(pagetable_t pagetable, uint64 start_va, uint64 size, uint64 *
     return 0; // Region is free
 }
 
-int map_display(uint64 addr)
+uint64 map_display(uint64 addr)
 {
 
     struct proc *p = myproc();
@@ -686,6 +686,44 @@ int map_display(uint64 addr)
     return addr;
 }
 
-void virtio_gpu_flip(void* buf){
+int virtio_gpu_flip(uint64 buf_va)
+{
+    struct proc *p = myproc();
+    
+    // Ensure the buffer is page-aligned
+    if (buf_va != PGROUNDDOWN(buf_va))
+        return -1;
+        
+    uint64 fb_size = (uint64)FB_PAGES * PGSIZE;
 
+    // Ensure the entire buffer resides in valid user address bounds
+    if (buf_va >= MAXVA || buf_va + fb_size > MAXVA)
+        return -1;
+
+    static struct virtio_gpu_mem_entry entries[FB_PAGES];
+
+    // Traverse the buffer page by page to extract physical addresses
+    for (int i = 0; i < FB_PAGES; i++)
+    {
+        uint64 va = buf_va + i * PGSIZE;
+        pte_t *pte = walk(p->pagetable, va, 0);
+        
+        // Check that the page is mapped, valid, and user-accessible
+        if (pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0)
+        {
+            return -1; 
+        }
+        
+        uint64 pa = PTE2PA(*pte);
+        entries[i].addr = pa;
+        entries[i].length = PGSIZE;
+    }
+
+    // Detach the current backing, attach the user's memory, and flush to the display
+    gpu_cmd_detach();
+    gpu_cmd_attach(entries, FB_PAGES);
+    virtio_gpu_commit(); // or gpu_transfer_flush()
+
+
+    return 0;
 }

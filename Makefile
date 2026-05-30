@@ -134,6 +134,7 @@ UPROGS=\
 	$U/_wc\
 	$U/_zombie\
 	$U/_show_flip\
+	$U/_flip_test\
 	$U/_show_map\
 	$U/_gol\
 
