@@ -202,5 +202,9 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
+    for(int i = 0;i<10;i++) {
+        sleep(1);
+    }
+
     exit(0);
 }
