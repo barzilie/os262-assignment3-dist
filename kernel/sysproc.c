@@ -105,10 +105,15 @@ uint64
 sys_flip_display(void)
 {
   uint64 address;
+  struct proc *p = myproc();
 
   argaddr(0, &address);
   
-  return virtio_gpu_flip(address);
+  int ret = virtio_gpu_flip(address);
+  if (ret == 0) {
+      p->display_flipped = 1; // Track that hardware is now pointing to user memory
+  }
+  return ret;
 
 }
 

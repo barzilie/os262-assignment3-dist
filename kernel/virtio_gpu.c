@@ -727,3 +727,20 @@ int virtio_gpu_flip(uint64 buf_va)
 
     return 0;
 }
+
+// Restore the GPU device backing list to the kernel's default fb[] pages.
+// Called by freeproc() if a process dies while owning the screen.
+void virtio_gpu_restore(void)
+{
+    static struct virtio_gpu_mem_entry entries[FB_PAGES];
+    
+    for (int i = 0; i < FB_PAGES; i++) {
+        entries[i].addr = (uint64)fb[i];
+        entries[i].length = PGSIZE;
+        entries[i].padding = 0; 
+    }
+    
+    gpu_cmd_detach();
+    gpu_cmd_attach(entries, FB_PAGES);
+    virtio_gpu_commit(); // Ensure the screen visually resets immediately
+}

@@ -91,7 +91,8 @@ struct proc {
   int killed;                  // If non-zero, have been killed
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
-  uint64 display_va;           //va of the framebuffer
+  uint64 display_va;           // va of the framebuffer mapping (existing)
+  int display_flipped;         // 1 if this process called sys_flip_display successfully
 
   // wait_lock must be held when using this:
   struct proc *parent;         // Parent process

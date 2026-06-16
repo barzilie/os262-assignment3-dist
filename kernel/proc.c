@@ -124,7 +124,8 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
-  p->display_va = 0; //mark display unused
+  p->display_va = 0; // mark display unused
+  p->display_flipped = 0; // initialize GPU ownership flag
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -160,12 +161,25 @@ freeproc(struct proc *p)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
 
-  // TDOWN THE FRAMEBUFFER MAPPING SAFELY BEFORE FREEING THE PAGETABLE
-  if(p->display_va != 0){
-    // Unmap the framebuffer pages without freeing the underlying physical memory (do_free = 0)
-    uvmunmap(p->pagetable, p->display_va, GPU_FB_PAGES, 0);
-    p->display_va = 0;
+  // --- NEW GPU CLEANUP LOGIC ---
+  // 1. Hardware State: If this process owns the screen, force the device to let go
+  if(p->display_flipped) {
+      virtio_gpu_restore();
   }
+
+  // 2. Memory State: Unmap the framebuffer virtual address if it was mapped
+  if(p->pagetable) {
+      if(p->display_va != 0) {
+          // Note: do_free is 0 because the physical pages belong to the kernel's fb[]
+          uvmunmap(p->pagetable, p->display_va, GPU_FB_PAGES, 0);
+      }
+  }
+
+  // Reset process tracking variables
+  p->display_va = 0;
+  p->display_flipped = 0;
+
+  // --- END NEW GPU CLEANUP LOGIC ---
 
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
